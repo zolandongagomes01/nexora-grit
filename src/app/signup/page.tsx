@@ -47,12 +47,25 @@ export default function SignupPage() {
 
       if (error) throw error;
 
+      // Tenta login automático
       const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       });
 
-      if (loginError) throw loginError;
+      // Se der "email not confirmed", ignora e redireciona
+      if (loginError) {
+        if (loginError.message?.toLowerCase().includes('not confirmed') ||
+            loginError.message?.toLowerCase().includes('email not confirmed')) {
+          if (accountType === 'company') {
+            window.location.href = '/enterprise';
+          } else {
+            window.location.href = '/onboarding';
+          }
+          return;
+        }
+        throw loginError;
+      }
 
       if (loginData.user) {
         await supabase.from('profiles').upsert({
@@ -63,14 +76,26 @@ export default function SignupPage() {
         }, { onConflict: 'id' });
       }
 
-      // Empresa vai directo para o dashboard enterprise
       if (accountType === 'company') {
         window.location.href = '/enterprise';
       } else {
         window.location.href = '/onboarding';
       }
+
     } catch (error: any) {
-      setError(error.message || 'Ocorreu um erro ao criar a conta');
+      const msg = error.message?.toLowerCase() || '';
+
+      if (msg.includes('rate limit') || msg.includes('email rate')) {
+        setError('Demasiadas tentativas. Aguarda alguns minutos e tenta novamente com um email diferente.');
+      } else if (msg.includes('already registered') || msg.includes('user already')) {
+        setError('Este email já tem uma conta. Faz login em vez de criar conta nova.');
+      } else if (msg.includes('invalid email')) {
+        setError('Email inválido. Verifica o endereço e tenta novamente.');
+      } else if (msg.includes('password')) {
+        setError('Password fraca. Usa pelo menos 8 caracteres com maiúscula, minúscula e número.');
+      } else {
+        setError(error.message || 'Ocorreu um erro ao criar a conta. Tenta novamente.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -159,7 +184,7 @@ export default function SignupPage() {
                     value={formData.fullName}
                     onChange={handleChange}
                     className="w-full pl-10 pr-3 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4F8EF7] focus:border-transparent transition-all"
-                    placeholder={accountType === 'company' ? 'TechCorp Angola' : 'Zola Gomes'}
+                    placeholder={accountType === 'company' ? 'TechCorp Angola' : 'Nome completo'}
                   />
                 </div>
               </div>
